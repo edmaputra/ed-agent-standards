@@ -1,6 +1,15 @@
+---
+description: "Clean code practices and modern Java 25 coding standards for all projects."
+globs:
+  - "**/*.java"
+  - "**/*.kt"
+---
+
 # Clean Code & Modern Java Standards
 
-This document establishes clean code practices and coding standards for this repository (Java 25 / Spring Boot 4).
+This document establishes clean code practices and coding standards (Java 25 / Spring Boot 4).
+
+> **Notation**: `{base-package}` refers to the project's root package (e.g. `com.example.myapp`). `{Module}` refers to the project's module name used as a prefix (e.g. `Iam`, `Order`, `Billing`). `{maintainer}` refers to the project's primary author or team identifier.
 
 ---
 
@@ -32,7 +41,7 @@ public class LoginCommand {
 
 ## 2. Interface Segregation & Single-Purpose Ports
 
-- **One Inbound Port = One Intention**: Avoid monolithic "god" service interfaces. Create single-purpose use case interfaces (`AuthenticateUserUseCase`, `ManageScopeUseCase`).
+- **One Inbound Port = One Intention**: Avoid monolithic "god" service interfaces. Create single-purpose use case interfaces (e.g. `AuthenticateUserUseCase`, `ManageOrderUseCase`).
 - **Encapsulate Arguments in Commands**: If a use case requires multiple inputs, encapsulate them into a strongly typed `*Command` record rather than passing long parameter lists.
 
 ```java
@@ -44,7 +53,7 @@ public interface AuthenticateUserUseCase {
 }
 
 // ❌ BAD: Monolithic service interface with dozens of unrelated methods
-public interface IamService {
+public interface UserService {
     TokenResponse login(String username, String password);
     void resetPassword(UUID userId);
     void assignRole(UUID userId, UUID roleId);
@@ -91,9 +100,9 @@ public class AuthenticationService implements AuthenticateUserUseCase {
   - Return empty collections (`List.of()`, `Set.of()`) instead of `null` for list queries.
 - **Domain Exceptions**:
   - Throw specific domain exceptions (e.g. `UserNotFoundException`, `AuthenticationException`, `AccessDeniedException`) instead of generic `RuntimeException` or returning error codes.
-  - Domain exceptions must reside in `io.github.edmaputra.iam.domain.exception`.
+  - Domain exceptions must reside in `{base-package}.domain.exception`.
 - **Centralized REST Mapping**:
-  - Catch domain exceptions in `adapter.rest` via `@ExceptionHandler` inside `IamExceptionHandler`. Translate them to standard HTTP status codes and structured problem responses.
+  - Catch domain exceptions in `adapter.rest` via `@ExceptionHandler` inside a centralized `{Module}ExceptionHandler`. Translate them to standard HTTP status codes and structured problem responses (see `api-conventions.md`).
 
 ```java
 // ✅ GOOD: Idiomatic Optional transformation and domain exception
@@ -116,26 +125,26 @@ if (user == null) {
 
 ```java
 // ✅ GOOD: Flat guard clauses
-public void validateScope(ScopeNode node) {
+public void validateNode(Node node) {
     if (node == null) {
-        throw new IllegalArgumentException("ScopeNode must not be null.");
+        throw new IllegalArgumentException("Node must not be null.");
     }
     if (node.name().isBlank()) {
-        throw new IllegalArgumentException("ScopeNode name must not be blank.");
+        throw new IllegalArgumentException("Node name must not be blank.");
     }
     // Happy path proceeds with no indentation
 }
 
 // ❌ BAD: Deeply nested indentation
-public void validateScope(ScopeNode node) {
+public void validateNode(Node node) {
     if (node != null) {
         if (!node.name().isBlank()) {
             // Happy path buried deep
         } else {
-            throw new IllegalArgumentException("ScopeNode name must not be blank.");
+            throw new IllegalArgumentException("Node name must not be blank.");
         }
     } else {
-        throw new IllegalArgumentException("ScopeNode must not be null.");
+        throw new IllegalArgumentException("Node must not be null.");
     }
 }
 ```
@@ -146,18 +155,18 @@ public void validateScope(ScopeNode node) {
 
 - **English Only**: Use standard English naming for all classes, methods, variables, database tables, and REST endpoints.
 - **Intention-Revealing Names**:
-  - Use Cases: Verb phrases (e.g., `AuthenticateUserUseCase`, `ManageScopeUseCase`).
-  - Domain Models: Noun phrases (e.g., `User`, `Role`, `Group`, `ScopeNode`).
-  - Outbound Ports: Repository or Provider nouns (e.g., `UserRepository`, `AuthenticationProvider`).
-  - Controllers: Resource nouns (e.g., `AuthController`).
-- **REST Endpoints**: Lowercase, plural kebab-case under `/api/v1/auth` (e.g., `/api/v1/auth/login`, `/api/v1/auth/refresh`, `/api/v1/auth/me`).
+  - Use Cases: Verb phrases (e.g., `AuthenticateUserUseCase`, `ManageOrderUseCase`).
+  - Domain Models: Noun phrases (e.g., `User`, `Order`, `Product`, `Category`).
+  - Outbound Ports: Repository or Provider nouns (e.g., `UserRepository`, `PaymentGateway`).
+  - Controllers: Resource nouns (e.g., `AuthController`, `OrderController`).
+- **REST Endpoints**: Lowercase, plural kebab-case under `/api/v{N}/` (e.g., `/api/v1/auth/login`, `/api/v1/orders`).
 
 ---
 
 ## 7. Testing Standards
 
 - **Integration-First Testing Tier (`*IT.java`)**:
-  - Primary verification tier using `@SpringBootTest(webEnvironment = RANDOM_PORT)` with Testcontainers PostgreSQL.
+  - Primary verification tier using `@SpringBootTest(webEnvironment = RANDOM_PORT)` with Testcontainers.
   - Use `org.springframework.test.web.reactive.server.WebTestClient` bound to the live embedded server (`WebTestClient.bindToServer().baseUrl("http://localhost:" + port)...`) for HTTP API testing, verifying actual network calls, servlet filters, security headers, and JSON responses. Do NOT use `MockMvc`.
   - **JSON Payloads & Lenient Assertions**: Send HTTP request bodies using direct JSON text blocks (`"""..."""`) via `.bodyValue(jsonString)` and assert JSON responses directly using `.expectBody().json(expectedJson, JsonCompareMode.LENIENT)` for declarative, readable verification.
 - **Pure Unit Tests Tier (`*Test.java`)**:
@@ -188,13 +197,13 @@ public void validateScope(ScopeNode node) {
      * Detailed explanation of responsibilities, design decisions,
      * or architectural placement (e.g. Hexagonal SPI port).
      *
-     * @author edmaputra
+     * @author {maintainer}
      * @since 1.0.0
      */
     ```
-  - **`@author edmaputra`**: Required on all top-level types to identify maintainer attribution.
-  - **`@since <version>`**: Required on all top-level types (e.g. `@since 1.0.0`) to document when the API or component was introduced.
-  - **Do NOT Use `@version`**: Avoid file-level `@version` tags. Git commits, tags, and `pom.xml` manage release versioning; `@since` documents API introduction without version drift.
+  - **`@author {maintainer}`**: Required on all top-level types. Each project should define its maintainer identifier (e.g. `edmaputra`, `team-billing`).
+  - **`@since <version>`**: Required on all top-level types. The value MUST match the **current application/library version** at the time the type is first introduced (e.g. if you are developing version `2.3.0` and add a new class, use `@since 2.3.0`). Once set, the `@since` value is never updated — it permanently records the introduction version.
+  - **Do NOT Use `@version`**: Avoid file-level `@version` tags. Git commits, tags, and `pom.xml`/`build.gradle.kts` manage release versioning; `@since` documents API introduction without version drift.
 
 - **Public & Protected Methods Documentation**:
   - All public and protected methods across interfaces, ports, domain services, and adapters must be documented with:
