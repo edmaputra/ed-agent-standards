@@ -10,15 +10,27 @@ This repository acts as the single source of truth for agent-enforced coding sta
 
 All rules target **Java 25 / Spring Boot 4** as the minimum baseline.
 
+### Severity Classification
+
+Every standard and rule across this repository is classified under one of three severity tiers:
+
+- 🔴 **MUST**: Non-negotiable requirements. Violations break CI builds, fail architectural tests, or block PR approval.
+- 🟡 **SHOULD**: Strongly recommended best practices. Deviations require documented justification and team consensus.
+- 🟢 **MAY**: Optional guidelines or stylistic preferences.
+
 ### Current Standards
 
 | Rule File | Focus Area | Key Highlights |
 |---|---|---|
 | [`rules/clean-code.md`](rules/clean-code.md) | Modern Java & Clean Code | Immutability via Java `record`s, compact constructors for fail-fast invariant checks, single-purpose ports, constructor injection with zero magic, mandatory `@author {maintainer}` & `@since <version>` type-level Javadoc standards. |
-| [`rules/hexagonal-architecture.md`](rules/hexagonal-architecture.md) | Architectural Boundaries | Ports & Adapters (Hexagonal Architecture) with strict inward dependency flow: `domain` (zero framework dependencies) ◄ `application` (use cases & orchestration) ◄ `adapter` (driving REST & driven persistence adapters). Includes ✅/❌ examples for every layer violation. |
+| [`rules/hexagonal-architecture.md`](rules/hexagonal-architecture.md) | Architectural Boundaries | Ports & Adapters (Hexagonal Architecture) with strict inward dependency flow, transaction boundary rules, layer mapping strategy, and ArchUnit enforcement tests. Includes ✅/❌ examples for every layer violation. |
 | [`rules/multi-tenancy-and-audit.md`](rules/multi-tenancy-and-audit.md) | Multi-Tenancy & Security | Pure domain tenancy representation via `TenantId` (RFC 9562 UUIDv7), pluggable host `TenantContextBridge` SPI, Java 25 `ScopedValue` context propagation, and structured immutable domain events. |
 | [`rules/logging-and-observability.md`](rules/logging-and-observability.md) | Logging & Observability | SLF4J structured logging, log level conventions, MDC context propagation (`traceId`, `tenantId`, `actorId`), sensitive data prohibition, Micrometer metrics naming, OpenTelemetry tracing, and Spring Actuator health endpoints. |
 | [`rules/api-conventions.md`](rules/api-conventions.md) | API Design & Error Handling | RESTful resource naming, HTTP method/status code standards, RFC 9457 Problem Details error responses, pagination conventions, Bean Validation for request DTOs, content negotiation, and API versioning strategy. |
+| [`rules/database-standards.md`](rules/database-standards.md) | Database & Migrations | Table/column naming conventions, audit columns, soft delete vs hard delete, optimistic locking with `@Version`, Liquibase migration standards, and connection pool/query performance guidelines. |
+| [`rules/security-standards.md`](rules/security-standards.md) | Security | Deny-by-default Spring Security filter chains, multi-level authorization, input validation & parameterized queries, CORS configuration, secrets management, rate limiting, OWASP Top 10 checklist, and dependency vulnerability management. |
+| [`rules/git-and-ci-standards.md`](rules/git-and-ci-standards.md) | Git, CI/CD & Containers | Conventional Commits standard, structured branch naming conventions, atomic PR quality gates, multi-stage non-root Docker images, and automated CI pipeline checks. |
+| [`rules/kotlin-standards.md`](rules/kotlin-standards.md) | Kotlin & Spring Boot 4 | Idiomatic Kotlin 2.x practices, compiler null-safety flags, `data class` vs JPA entity separation, Coroutines & `Flow` in WebFlux, sealed interface domain modeling, and extension function rules. |
 
 ---
 

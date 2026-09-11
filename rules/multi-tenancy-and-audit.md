@@ -10,10 +10,15 @@ globs:
 This document outlines the architectural requirements for multi-tenancy, security context propagation, and audit eventing.
 
 > **Notation**: `{Module}` refers to the project's module name used as a class prefix (e.g. `Iam`, `Order`). `{module}` refers to the lowercase version used in table prefixes and config namespaces.
+>
+> **Severity Levels**:
+> - 🔴 **MUST**: Non-negotiable requirement. Violations will fail CI checks or block code review approval.
+> - 🟡 **SHOULD**: Strongly recommended practice. Deviations require team consensus and documented rationale.
+> - 🟢 **MAY**: Optional guideline or contextual optimization.
 
 ---
 
-## 1. Multi-Tenancy Architecture
+## 1. Multi-Tenancy Architecture 🔴 MUST
 
 Multi-tenancy is a foundational architectural pillar. The system operates on a **shared application, shared database, tenant discriminator column** model without tightly coupling to host application databases.
 
@@ -57,7 +62,7 @@ public interface OrderJpaRepository extends JpaRepository<OrderJpaEntity, UUID> 
 
 ---
 
-## 2. Security Context & Actor Propagation
+## 2. Security Context & Actor Propagation 🔴 MUST
 
 ### 2.1 Java 25 `ScopedValue` Context
 - Context propagation uses Java 25 `ScopedValue` via `SecurityContextAccessor` implementing `CurrentActorProvider`.
@@ -90,7 +95,7 @@ public class SecurityContextAccessor implements CurrentActorProvider {
 
 ---
 
-## 3. Audit Trail & Domain Events
+## 3. Audit Trail & Domain Events 🔴 MUST
 
 Audit trailing is driven by structured domain events emitted upon state mutations.
 

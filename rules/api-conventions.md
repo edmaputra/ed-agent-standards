@@ -11,9 +11,14 @@ globs:
 
 This document establishes RESTful API design conventions, error response formats, pagination, and request validation standards for Java 25 / Spring Boot 4 services.
 
+> **Severity Levels**:
+> - 🔴 **MUST**: Non-negotiable requirement. Violations will fail CI checks or block code review approval.
+> - 🟡 **SHOULD**: Strongly recommended practice. Deviations require team consensus and documented rationale.
+> - 🟢 **MAY**: Optional guideline or contextual optimization.
+
 ---
 
-## 1. RESTful Resource Naming
+## 1. RESTful Resource Naming 🔴 MUST
 
 - **Plural Nouns**: Use plural nouns for resource collections (e.g. `/orders`, `/users`, `/user-profiles`).
 - **Kebab-Case**: Use lowercase kebab-case for multi-word resource names (e.g. `/user-profiles`, NOT `/userProfiles` or `/user_profiles`).
@@ -40,7 +45,7 @@ GET    /orders                    ← missing version prefix
 
 ---
 
-## 2. HTTP Method Semantics
+## 2. HTTP Method Semantics 🔴 MUST
 
 Use HTTP methods strictly according to their defined semantics:
 
@@ -81,7 +86,7 @@ public class OrderController {
 
 ---
 
-## 3. HTTP Status Code Standards
+## 3. HTTP Status Code Standards 🔴 MUST
 
 ### Success Codes
 
@@ -114,7 +119,7 @@ public class OrderController {
 
 ---
 
-## 4. Error Response Format — RFC 9457 Problem Details
+## 4. Error Response Format — RFC 9457 Problem Details 🔴 MUST
 
 All error responses MUST follow the [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457) format. Spring Boot 4 supports this natively via `ProblemDetail`.
 
@@ -216,7 +221,7 @@ public ResponseEntity<?> getOrder(@PathVariable UUID id) {
 
 ---
 
-## 5. Success Response Conventions
+## 5. Success Response Conventions 🔴 MUST
 
 ### Single Resource
 
@@ -266,7 +271,7 @@ Response shape:
 
 ---
 
-## 6. Pagination Standards
+## 6. Pagination Standards 🟡 SHOULD
 
 - **Default Strategy**: Offset-based pagination using `page` (zero-indexed) and `size` parameters.
 - **Default Page Size**: `20`. Maximum page size: `100`. Requests exceeding the max MUST be clamped, not rejected.
@@ -286,7 +291,7 @@ public Page<OrderSummary> list(
 
 ---
 
-## 7. Request Validation
+## 7. Request Validation 🔴 MUST
 
 - **Bean Validation**: Use Jakarta Bean Validation (`@Valid`, `@NotNull`, `@NotBlank`, `@Size`, `@Min`, `@Max`, `@Pattern`) on controller `@RequestBody` parameters.
 - **Validated Groups**: Use validation groups for context-specific rules (e.g. `OnCreate` vs `OnUpdate`).
@@ -336,7 +341,7 @@ public OrderSummary create(@RequestBody CreateOrderRequest request) {
 
 ---
 
-## 8. Content Negotiation & Headers
+## 8. Content Negotiation & Headers 🔴 MUST
 
 - **Default Content Type**: `application/json` for both request and response bodies.
 - **`Content-Type` Header**: All POST/PUT/PATCH requests MUST set `Content-Type: application/json`.
@@ -356,7 +361,7 @@ public ResponseEntity<OrderSummary> create(@Valid @RequestBody CreateOrderReques
 
 ---
 
-## 9. API Versioning Strategy
+## 9. API Versioning Strategy 🟡 SHOULD
 
 - **URI Path Versioning** (default): `/api/v1/`, `/api/v2/`. Simple, explicit, and easily routable.
 - **Version Lifecycle**:

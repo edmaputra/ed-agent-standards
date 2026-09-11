@@ -10,10 +10,15 @@ globs:
 This document establishes clean code practices and coding standards (Java 25 / Spring Boot 4).
 
 > **Notation**: `{base-package}` refers to the project's root package (e.g. `com.example.myapp`). `{Module}` refers to the project's module name used as a prefix (e.g. `Iam`, `Order`, `Billing`). `{maintainer}` refers to the project's primary author or team identifier.
+>
+> **Severity Levels**:
+> - 🔴 **MUST**: Non-negotiable requirement. Violations will fail CI checks or block code review approval.
+> - 🟡 **SHOULD**: Strongly recommended practice. Deviations require team consensus and documented rationale.
+> - 🟢 **MAY**: Optional guideline or contextual optimization.
 
 ---
 
-## 1. Immutability & Java Records
+## 1. Immutability & Java Records 🔴 MUST
 
 - **Default to Java `record`**: Use `record` for all Domain Entities, Value Objects, Commands, Events, and DTOs.
 - **Fail-Fast with Compact Constructors**: Validate invariants directly inside the compact constructor to prevent instantiating invalid objects.
@@ -39,7 +44,7 @@ public class LoginCommand {
 
 ---
 
-## 2. Interface Segregation & Single-Purpose Ports
+## 2. Interface Segregation & Single-Purpose Ports 🔴 MUST
 
 - **One Inbound Port = One Intention**: Avoid monolithic "god" service interfaces. Create single-purpose use case interfaces (e.g. `AuthenticateUserUseCase`, `ManageOrderUseCase`).
 - **Encapsulate Arguments in Commands**: If a use case requires multiple inputs, encapsulate them into a strongly typed `*Command` record rather than passing long parameter lists.
@@ -63,7 +68,7 @@ public interface UserService {
 
 ---
 
-## 3. Explicit Dependency Injection & Zero Magic
+## 3. Explicit Dependency Injection & Zero Magic 🔴 MUST
 
 - **Constructor Injection with `final` Fields**: Always inject dependencies via constructors.
 - **Lombok `@RequiredArgsConstructor`**: Permitted for clean constructor generation on services, adapters, and controllers.
@@ -93,7 +98,7 @@ public class AuthenticationService implements AuthenticateUserUseCase {
 
 ---
 
-## 4. Null Safety & Clean Error Handling
+## 4. Null Safety & Clean Error Handling 🔴 MUST
 
 - **Never Return `null`**:
   - Return `Optional<T>` from repository ports for single items that might not exist.
@@ -118,7 +123,7 @@ if (user == null) {
 
 ---
 
-## 5. Guard Clauses & Flat Code
+## 5. Guard Clauses & Flat Code 🟡 SHOULD
 
 - **Guard Clauses**: Validate preconditions early and exit/throw immediately to avoid nested `if-else` blocks (arrow anti-pattern).
 - **Pattern Matching (Java 25)**: Use pattern matching for `instanceof` and `switch` expressions over chained condition ladders.
@@ -151,7 +156,7 @@ public void validateNode(Node node) {
 
 ---
 
-## 6. Naming & Language Conventions
+## 6. Naming & Language Conventions 🔴 MUST
 
 - **English Only**: Use standard English naming for all classes, methods, variables, database tables, and REST endpoints.
 - **Intention-Revealing Names**:
@@ -163,7 +168,7 @@ public void validateNode(Node node) {
 
 ---
 
-## 7. Testing Standards
+## 7. Testing Standards 🔴 MUST
 
 - **Integration-First Testing Tier (`*IT.java`)**:
   - Primary verification tier using `@SpringBootTest(webEnvironment = RANDOM_PORT)` with Testcontainers.
@@ -185,7 +190,7 @@ public void validateNode(Node node) {
 
 ---
 
-## 8. Comprehensive Javadoc Documentation Standards
+## 8. Comprehensive Javadoc Documentation Standards 🔴 MUST
 
 - **Mandatory Type-Level Javadoc (Class, Interface, Record, Enum)**:
   - Every Java class, interface, `record`, and `enum` MUST have a descriptive Javadoc block summarizing its purpose, domain context, and architectural role.

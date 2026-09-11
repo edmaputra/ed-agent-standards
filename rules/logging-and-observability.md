@@ -12,9 +12,14 @@ globs:
 
 This document establishes logging, tracing, metrics, and health-check standards for Java 25 / Spring Boot 4 services.
 
+> **Severity Levels**:
+> - 🔴 **MUST**: Non-negotiable requirement. Violations will fail CI checks or block code review approval.
+> - 🟡 **SHOULD**: Strongly recommended practice. Deviations require team consensus and documented rationale.
+> - 🟢 **MAY**: Optional guideline or contextual optimization.
+
 ---
 
-## 1. Logger Declaration
+## 1. Logger Declaration 🔴 MUST
 
 - **Use SLF4J**: All logging MUST go through the SLF4J API (`org.slf4j.Logger`).
 - **Allowed Declarations**:
@@ -51,7 +56,7 @@ public class OrderProcessingService {
 
 ---
 
-## 2. Log Level Conventions
+## 2. Log Level Conventions 🔴 MUST
 
 Use log levels consistently across all services. Misuse of levels makes alerting and log filtering unreliable.
 
@@ -78,7 +83,7 @@ log.debug("Order placed: {}", orderId);  // Business event — use INFO
 
 ---
 
-## 3. Structured Logging
+## 3. Structured Logging 🔴 MUST
 
 - **Production Format**: JSON structured output (via Logback `JsonLayout` or `logstash-logback-encoder`) for machine parsing by log aggregation systems (ELK, Loki, Datadog, etc.).
 - **Development Format**: Human-readable pattern layout for local development.
@@ -114,7 +119,7 @@ log.info("Order created. orderId=" + order.id() + ", total=" + order.total()); /
 
 ---
 
-## 4. Sensitive Data Prohibition
+## 4. Sensitive Data Prohibition 🔴 MUST
 
 Passwords, tokens, PII, and secrets must **NEVER** appear in logs. This rule has no exceptions.
 
@@ -139,7 +144,7 @@ log.info("Processing payment. paymentMethodId={}, last4={}", paymentMethodId, la
 
 ---
 
-## 5. Correlation & Distributed Tracing
+## 5. Correlation & Distributed Tracing 🟡 SHOULD
 
 - **Micrometer Tracing with OpenTelemetry**: Use Spring Boot 4's auto-configured Micrometer Tracing with OpenTelemetry bridge for automatic `traceId`/`spanId` propagation.
 - **W3C Trace Context**: Use W3C `traceparent` header propagation (Spring Boot 4 default) for inter-service calls.
@@ -165,7 +170,7 @@ public class PaymentGatewayAdapter implements PaymentGateway {
 
 ---
 
-## 6. Metrics Naming Conventions
+## 6. Metrics Naming Conventions 🟡 SHOULD
 
 - **Framework**: Micrometer (auto-configured by Spring Boot 4 Actuator).
 - **Naming**: Lowercase, dot-separated, following Micrometer conventions.
@@ -189,7 +194,7 @@ meterRegistry.counter("orders.created.count",
 
 ---
 
-## 7. Health & Readiness Endpoints
+## 7. Health & Readiness Endpoints 🔴 MUST
 
 - **Spring Boot Actuator**: Always include `spring-boot-starter-actuator` dependency.
 - **Required Endpoints** (exposed for orchestration/monitoring):
@@ -220,7 +225,7 @@ public class PaymentGatewayHealthIndicator implements HealthIndicator {
 
 ---
 
-## 8. Performance Logging Guidelines
+## 8. Performance Logging Guidelines 🟢 MAY
 
 - **Never Log in Hot Loops**: Avoid logging inside tight loops or high-frequency methods. Use counters/metrics instead.
 - **Log External Call Latency**: Log duration of external service calls, database queries over a threshold, and message processing times at `INFO` or `DEBUG` level.
