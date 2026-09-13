@@ -231,3 +231,31 @@ ENTRYPOINT ["java", "-Xmx4g", "-jar", "target/app.jar"]
 - 🔴 **MUST**: Never use dynamic or floating version ranges (e.g. `1.+`, `LATEST`, `RELEASE`). Every dependency must resolve to a deterministic, pinned version.
 - 🔴 **MUST**: Enable automated dependency vulnerability updates (Dependabot or Renovate) configured for weekly reviews.
 - 🟡 **SHOULD**: Maintain an approved dependency policy — evaluate license compatibility (Apache-2.0, MIT vs AGPL) before introducing new third-party libraries.
+
+---
+
+## 7. Changelog & Release Notes Standards 🔴 MUST
+
+All distributable libraries, starter modules, and enterprise services must maintain a `CHANGELOG.md` file at the repository root to communicate user-visible improvements, deprecations, breaking changes, and fixes.
+
+### Format & Structure Principles
+
+- 🔴 **MUST**: Adhere to the [Keep a Changelog (v1.1.0)](https://keepachangelog.com/en/1.1.0/) format and follow [Semantic Versioning (v2.0.0)](https://semver.org/spec/v2.0.0.html).
+- 🔴 **MUST**: Maintain an active `## [Unreleased]` section at the top of the file to stage changes during ongoing development cycles.
+- 🔴 **MUST**: Categorize changes within each release using standard subheadings in the following order:
+  - `Added`: New features, capabilities, public APIs, or configuration properties.
+  - `Changed`: Changes in existing functionality, architectural refactorings, or behavior updates.
+  - `Deprecated`: Soon-to-be-removed features with guidance on replacements.
+  - `Removed`: Now-removed features, classes, or endpoints previously deprecated.
+  - `Fixed`: Bug fixes, edge case corrections, or patch resolutions.
+  - `Security`: Vulnerability resolutions, CVE remediations, or security enhancements.
+- 🔴 **MUST**: Express changes in human-readable terms focused on library consumers and developers, rather than raw git commit logs.
+- 🟡 **SHOULD**: Reference associated Pull Request numbers (e.g., `([#12](https://github.com/org/repo/pull/12))`) and contributors for traceability.
+
+### Release Workflow & Tag Diff Links
+
+- 🔴 **MUST**: When cutting a release, rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD` (ISO 8601 date format) and create a fresh `## [Unreleased]` block above it for the next iteration.
+- 🔴 **MUST**: Include reference comparison links at the bottom of `CHANGELOG.md`:
+  - `[Unreleased]: https://github.com/<owner>/<repo>/compare/v<latest-tag>...HEAD`
+  - `[X.Y.Z]: https://github.com/<owner>/<repo>/compare/v<previous-tag>...v<current-tag>`
+  - `[initial-tag]: https://github.com/<owner>/<repo>/releases/tag/v<initial-tag>`
