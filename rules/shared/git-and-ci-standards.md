@@ -259,3 +259,48 @@ All distributable libraries, starter modules, and enterprise services must maint
   - `[Unreleased]: https://github.com/<owner>/<repo>/compare/v<latest-tag>...HEAD`
   - `[X.Y.Z]: https://github.com/<owner>/<repo>/compare/v<previous-tag>...v<current-tag>`
   - `[initial-tag]: https://github.com/<owner>/<repo>/releases/tag/v<initial-tag>`
+
+---
+
+## 8. Repository Hygiene & `.gitignore` Standards 🔴 MUST
+
+Repositories must maintain a clean working tree free from build outputs, IDE caches, and agent runtime artifacts.
+
+### Required `.gitignore` Entries
+
+- 🔴 **MUST**: Ignore all AI agent-generated runtime files:
+  - `project-structure.json`
+  - `.project-structure.json`
+  - `.agents/project-structure.json`
+- 🔴 **MUST**: Ignore build tool directories:
+  - Java/Kotlin: `build/`, `target/`, `.gradle/`
+  - Flutter: `.dart_tool/`, `build/`
+  - Angular: `.angular/`, `dist/`, `node_modules/`
+- 🔴 **MUST**: Ignore local IDE and OS metadata:
+  - `.idea/`, `.vscode/`, `*.iml`
+  - `.DS_Store`, `Thumbs.db`
+
+```gitignore
+# ✅ GOOD: Baseline repository .gitignore entries
+# AI Agent runtime artifacts
+project-structure.json
+.project-structure.json
+.agents/project-structure.json
+
+# Build & Dependencies
+build/
+target/
+dist/
+node_modules/
+.dart_tool/
+.angular/
+.gradle/
+
+# IDE & OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+```
+
