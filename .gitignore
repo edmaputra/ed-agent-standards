@@ -1,0 +1,13 @@
+# AI Agent runtime files
+project-structure.json
+.project-structure.json
+.agents/project-structure.json
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# OS artifacts
+.DS_Store
+Thumbs.db

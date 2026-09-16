@@ -25,6 +25,7 @@ Every standard and rule across this repository is classified under one of three 
 | Rule File | Focus Area | Key Highlights |
 |---|---|---|
 | [`rules/shared/git-and-ci-standards.md`](rules/shared/git-and-ci-standards.md) | Git, CI/CD & Containers | Conventional Commits standard, structured branch naming conventions, atomic PR quality gates, multi-stage non-root Docker images, and automated CI pipeline checks. |
+| [`rules/shared/project-structure-standards.md`](rules/shared/project-structure-standards.md) | Directory Structure & Agent Discovery | Canonical project structures (Hexagonal Java/Kotlin, Feature-first Flutter & Angular), root `AGENTS.md` manifests, automated scanning script, and cached `project-structure.json`. |
 
 #### ☕ Java / Kotlin
 
@@ -100,7 +101,42 @@ ln -s ~/Projects/ed-agent-standards/rules ~/.gemini/config/rules
 
 ---
 
-## 3. Adding a New Stack
+## 3. Automated Project Discovery & Lifecycle Hooks
+
+When this repository is mapped to `.agents` in downstream projects, Antigravity automatically detects [`hooks.json`](hooks.json).
+
+### How It Works
+
+1. **PreInvocation Lifecycle Hook**: Before the agent executes its first turn in a session, `hooks.json` triggers [`scripts/ensure-structure.sh`](scripts/ensure-structure.sh).
+2. **Missing Structure Check**: If `project-structure.json` is missing, [`scripts/scan-structure.py`](scripts/scan-structure.py) automatically scans the repository, classifies its architecture (Hexagonal Java/Kotlin, Feature-first Flutter/Angular), and generates `project-structure.json`.
+3. **Zero-Latency Navigation**: The agent instantly consumes the project map without spending turns running exploratory commands (`list_dir`, `find_by_name`).
+
+### Required `.gitignore` Configuration
+
+Downstream repositories must ignore the generated structure cache in `.gitignore`:
+
+```gitignore
+# AI Agent runtime artifacts
+project-structure.json
+.project-structure.json
+.agents/project-structure.json
+```
+
+### Manual Refresh
+
+To manually regenerate or preview the structure map at any time:
+
+```bash
+# Refresh structure map in current workspace
+python3 .agents/scripts/scan-structure.py --force
+
+# Print JSON map to stdout without writing
+python3 .agents/scripts/scan-structure.py --stdout
+```
+
+---
+
+## 4. Adding a New Stack
 
 1. Create a new subdirectory under `rules/` named after the stack (e.g. `rules/react/`).
 2. Add a `*-standards.md` file inside it with YAML frontmatter (`description`, `globs`) targeting the relevant file extensions.
@@ -109,7 +145,7 @@ ln -s ~/Projects/ed-agent-standards/rules ~/.gemini/config/rules
 
 ---
 
-## 4. Contributing & Updating Rules
+## 5. Contributing & Updating Rules
 
 1. Update or add rule documents inside the appropriate `rules/<stack>/` subdirectory.
 2. Ensure markdown documents are structured clearly with good/bad examples and clear rationale.
