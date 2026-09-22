@@ -136,34 +136,85 @@ Every pull request and merge to `main` must run through an automated CI pipeline
 
 ```mermaid
 flowchart LR
-    A[Code Push] --> B[Lint & Format Check]
-    B --> C[Compile Java 25]
-    C --> D[Unit & Architecture Tests]
-    D --> E[Integration & DB Tests]
-    E --> F[Vulnerability & SAST Scan]
-    F --> G[Container Image Build]
+    A[Code Push / PR] --> B[Concurrency Gate]
+    B --> C[Format & Lint Check]
+    C --> D[Compile / Analyze]
+    D --> E[Unit & Architecture Tests]
+    E --> F[Coverage Aggregation]
+    F --> G[Sticky PR Comment]
+    F --> H[Artifact Retention]
 ```
 
-### Mandatory CI Stages
+### Core Pipeline Requirements 🔴 MUST
 
-1. **Lint & Formatting Check**:
-   - Verify code formatting (Spotless, Checkstyle, or ktlint).
-   - 🔴 **MUST**: Fail the build if formatting violations exist. Developers must format locally before pushing (`./gradlew spotlessApply` or `mvn spotless:apply`).
+1. **Concurrency Control**:
+   - 🔴 **MUST**: Define concurrency groups with `cancel-in-progress: true` to prevent redundant builds and conserve runner resources:
+     ```yaml
+     concurrency:
+       group: ${{ github.workflow }}-${{ github.ref }}
+       cancel-in-progress: true
+     ```
 
-2. **Compilation**:
-   - Compile against target **Java 25** bytecode with compiler warnings treated as errors (`-Werror`).
+2. **Branch Trigger Conventions**:
+   - 🔴 **MUST**: Trigger CI on `push` for `main`, `test/**`, `feat/**`, `release/**` and `pull_request` targeting `main`.
+   - 🔴 **MUST**: Enable `workflow_dispatch` on all CI workflows for manual verification and reruns.
 
-3. **Architecture & Unit Testing**:
-   - Execute all unit tests and ArchUnit architecture rule tests.
-   - 🔴 **MUST**: Zero failing tests permitted.
+3. **Least-Privilege Permissions**:
+   - 🔴 **MUST**: Restrict workflow permissions to only what is required (`contents: read`, `pull-requests: write` when updating PR comments).
 
-4. **Integration Testing**:
-   - Execute integration tests with Testcontainers (PostgreSQL, Redis, Kafka).
-   - Verify Liquibase database migrations apply cleanly on an empty schema.
+4. **Code Coverage Gates & Sticky PR Reporting**:
+   - 🔴 **MUST**: Enforce a minimum **80% line coverage** standard across core business and domain logic:
+     - 🟢 **80%+**: Passing gate.
+     - 🟡 **60% - 79%**: Warning threshold requiring review.
+     - 🔴 **< 60%**: Failing build or review block.
+   - 🔴 **MUST**: Format coverage results into `$GITHUB_STEP_SUMMARY` for direct visibility on the GitHub Actions run page.
+   - 🔴 **MUST**: Update PR coverage comments **idempotently** (using `gh api PATCH` to update existing comments or `gh pr comment` if none exist) to prevent comment spam on iterative pushes:
+     ```bash
+     COMMENT_ID=$(gh api repos/${{ github.repository }}/issues/${PR_NUMBER}/comments --jq '.[] | select(.body | contains("Code Coverage Summary")) | .id' | head -n 1)
+     if [ -n "$COMMENT_ID" ]; then
+       gh api --method PATCH repos/${{ github.repository }}/issues/comments/${COMMENT_ID} -F body=@target/coverage-summary.md
+     else
+       gh pr comment ${PR_NUMBER} --body-file target/coverage-summary.md
+     fi
+     ```
 
-5. **Security & Dependency Scanning**:
-   - Run dependency vulnerability checks (Dependabot, Snyk, or OWASP Dependency-Check).
-   - 🔴 **MUST**: Fail the build for dependencies with known HIGH or CRITICAL severity CVEs without an active remediation plan.
+5. **Artifact Retention & Failure Diagnostics**:
+   - 🔴 **MUST**: Always archive coverage reports (`if: always()`) as GitHub Actions artifacts for auditable test metrics.
+   - 🔴 **MUST**: Upload test failure reports (`surefire`, `failsafe`, or test logs) when builds fail (`if: failure()`) to enable rapid debugging.
+
+---
+
+### Stack-Specific CI Pipeline Standards
+
+#### 1. Java Spring Boot & Kotlin (Maven / Gradle)
+- **Runtime**: Target Java 25 (Eclipse Temurin) with build tool caching (`cache: 'maven'` or `cache: 'gradle'`).
+- **Build & Test**: Execute wrapper commands `./mvnw clean verify -B` or `./gradlew check`.
+- **Coverage**: Aggregate multi-module coverage with JaCoCo and execute the shared parser:
+  ```bash
+  python3 .agents/scripts/coverage/generate-jacoco-summary.py --output target/coverage-summary.md
+  ```
+- **Templates**: [`templates/github-actions/ci-maven.yml`](templates/github-actions/ci-maven.yml) or reusable workflow [`.github/workflows/reusable-maven-ci.yml`](.github/workflows/reusable-maven-ci.yml).
+
+#### 2. Flutter & Dart
+- **Runtime**: Flutter `stable` channel with action caching (`subosito/flutter-action@v2`).
+- **Static Analysis**: `flutter analyze --fatal-infos --fatal-warnings` and `dart format --output=none --set-exit-if-changed .`.
+- **Testing**: `flutter test --coverage` generating standard `coverage/lcov.info`.
+- **Coverage**: Execute the shared LCOV parser:
+  ```bash
+  python3 .agents/scripts/coverage/generate-lcov-summary.py coverage/lcov.info target/coverage-summary.md --title "Flutter Code Coverage Summary"
+  ```
+- **Templates**: [`templates/github-actions/ci-flutter.yml`](templates/github-actions/ci-flutter.yml) or reusable workflow [`.github/workflows/reusable-flutter-ci.yml`](.github/workflows/reusable-flutter-ci.yml).
+
+#### 3. Angular & TypeScript
+- **Runtime**: Node.js LTS (v20+) with `npm` caching (`actions/setup-node@v4`).
+- **Linting**: `npm run lint` with zero unresolved warnings.
+- **Testing**: `npm test -- --coverage --watch=false --ci` generating `coverage/lcov.info`.
+- **Build**: `npm run build -- --configuration production` ensuring production asset bundle compiles cleanly.
+- **Coverage**: Execute the shared LCOV parser:
+  ```bash
+  python3 .agents/scripts/coverage/generate-lcov-summary.py coverage/lcov.info target/coverage-summary.md --title "Angular Code Coverage Summary"
+  ```
+- **Templates**: [`templates/github-actions/ci-angular.yml`](templates/github-actions/ci-angular.yml) or reusable workflow [`.github/workflows/reusable-angular-ci.yml`](.github/workflows/reusable-angular-ci.yml).
 
 ---
 

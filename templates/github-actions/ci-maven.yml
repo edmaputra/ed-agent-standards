@@ -1,0 +1,98 @@
+name: CI (Maven)
+
+on:
+  push:
+    branches:
+      - main
+      - 'test/**'
+      - 'feat/**'
+      - 'release/**'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build & Test (JDK ${{ matrix.java-version }} - ${{ matrix.distribution }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        java-version: ['25']
+        distribution: ['temurin']
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Set up Java ${{ matrix.java-version }} (${{ matrix.distribution }})
+        uses: actions/setup-java@v5
+        with:
+          java-version: ${{ matrix.java-version }}
+          distribution: ${{ matrix.distribution }}
+          cache: 'maven'
+
+      - name: Make Maven Wrapper executable
+        run: chmod +x mvnw
+
+      - name: Build and verify with Maven
+        run: ./mvnw clean verify -B
+
+      - name: Generate JaCoCo Coverage Summary
+        if: always()
+        run: |
+          if [ -f .agents/scripts/coverage/generate-jacoco-summary.py ]; then
+            python3 .agents/scripts/coverage/generate-jacoco-summary.py --output target/coverage-summary.md
+          elif [ -f .github/scripts/generate-jacoco-summary.py ]; then
+            python3 .github/scripts/generate-jacoco-summary.py --output target/coverage-summary.md
+          else
+            echo "Coverage generator script not found."
+          fi
+
+      - name: Comment PR Coverage Summary
+        if: github.event_name == 'pull_request' && !cancelled()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          if [ -f target/coverage-summary.md ]; then
+            COMMENT_ID=$(gh api repos/${{ github.repository }}/issues/${PR_NUMBER}/comments --jq '.[] | select(.body | contains("Unified JaCoCo Code Coverage Summary")) | .id' | head -n 1)
+            if [ -n "$COMMENT_ID" ]; then
+              gh api --method PATCH repos/${{ github.repository }}/issues/comments/${COMMENT_ID} -F body=@target/coverage-summary.md
+            else
+              gh pr comment ${PR_NUMBER} --body-file target/coverage-summary.md
+            fi
+          fi
+
+      - name: Upload JaCoCo Coverage Report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: jacoco-coverage-report-${{ matrix.distribution }}
+          path: |
+            **/target/site/jacoco-aggregate/
+            **/target/site/jacoco-merged/
+            **/target/site/jacoco/
+          if-no-files-found: ignore
+
+      - name: Upload Test Reports (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: surefire-failsafe-reports-${{ matrix.distribution }}
+          path: |
+            **/target/surefire-reports/**
+            **/target/failsafe-reports/**
+          if-no-files-found: ignore

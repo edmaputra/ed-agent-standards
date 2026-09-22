@@ -1,0 +1,104 @@
+name: Reusable Maven CI
+
+on:
+  workflow_call:
+    inputs:
+      java-version:
+        description: 'Java version'
+        required: false
+        default: '25'
+        type: string
+      distribution:
+        description: 'JDK distribution'
+        required: false
+        default: 'temurin'
+        type: string
+      maven-goals:
+        description: 'Maven goals'
+        required: false
+        default: 'clean verify -B'
+        type: string
+      strip-prefix:
+        description: 'Prefix to strip from module names in coverage summary'
+        required: false
+        default: ''
+        type: string
+
+jobs:
+  build-and-test:
+    name: Build & Test (JDK ${{ inputs.java-version }} - ${{ inputs.distribution }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Set up Java ${{ inputs.java-version }} (${{ inputs.distribution }})
+        uses: actions/setup-java@v5
+        with:
+          java-version: ${{ inputs.java-version }}
+          distribution: ${{ inputs.distribution }}
+          cache: 'maven'
+
+      - name: Make Maven Wrapper executable
+        run: chmod +x mvnw
+
+      - name: Build and verify with Maven
+        run: ./mvnw ${{ inputs.maven-goals }}
+
+      - name: Generate JaCoCo Coverage Summary
+        if: always()
+        run: |
+          STRIP_ARG=""
+          if [ -n "${{ inputs.strip-prefix }}" ]; then
+            STRIP_ARG="--strip-prefix ${{ inputs.strip-prefix }}"
+          fi
+          if [ -f .agents/scripts/coverage/generate-jacoco-summary.py ]; then
+            python3 .agents/scripts/coverage/generate-jacoco-summary.py --output target/coverage-summary.md $STRIP_ARG
+          elif [ -f .github/scripts/generate-jacoco-summary.py ]; then
+            python3 .github/scripts/generate-jacoco-summary.py --output target/coverage-summary.md $STRIP_ARG
+          else
+            echo "JaCoCo summary script not found."
+          fi
+
+      - name: Comment PR Coverage Summary
+        if: github.event_name == 'pull_request' && !cancelled()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          if [ -f target/coverage-summary.md ]; then
+            COMMENT_ID=$(gh api repos/${{ github.repository }}/issues/${PR_NUMBER}/comments --jq '.[] | select(.body | contains("Unified JaCoCo Code Coverage Summary")) | .id' | head -n 1)
+            if [ -n "$COMMENT_ID" ]; then
+              gh api --method PATCH repos/${{ github.repository }}/issues/comments/${COMMENT_ID} -F body=@target/coverage-summary.md
+            else
+              gh pr comment ${PR_NUMBER} --body-file target/coverage-summary.md
+            fi
+          fi
+
+      - name: Upload JaCoCo Coverage Report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: jacoco-coverage-report-${{ inputs.distribution }}
+          path: |
+            **/target/site/jacoco-aggregate/
+            **/target/site/jacoco-merged/
+            **/target/site/jacoco/
+          if-no-files-found: ignore
+
+      - name: Upload Test Reports (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: surefire-failsafe-reports-${{ inputs.distribution }}
+          path: |
+            **/target/surefire-reports/**
+            **/target/failsafe-reports/**
+          if-no-files-found: ignore

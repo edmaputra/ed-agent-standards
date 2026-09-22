@@ -258,7 +258,7 @@ abstract interface class OrderRepository {
 - 🔴 **MUST**: Write **unit tests** for all use case classes, repository implementations, and pure Dart business logic in `test/`.
 - 🟡 **SHOULD**: Write **widget tests** for key UI components and page flows using `flutter_test`.
 - 🟢 **MAY**: Write **integration tests** using `integration_test` for critical user journeys (login, checkout, etc.).
-- 🔴 **MUST**: Maintain a minimum of **80% line coverage** on `domain/` and `data/` layers. Enforce via CI (`flutter test --coverage`).
+- 🔴 **MUST**: Maintain a minimum of **80% line coverage** on `domain/` and `data/` layers. Enforce via CI (`flutter test --coverage`) using the shared parser `python3 .agents/scripts/coverage/generate-lcov-summary.py` and template `templates/github-actions/ci-flutter.yml`.
 - 🟡 **SHOULD**: Use `mocktail` (preferred) or `mockito` for mocking dependencies in unit tests.
 
 ```dart

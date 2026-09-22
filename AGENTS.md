@@ -16,9 +16,22 @@ ed-agent-standards/
 ├── hooks.json                   # Antigravity PreInvocation lifecycle hook configuration
 ├── AGENTS.md                    # Root agent navigation guide (this file)
 ├── README.md                    # Public documentation and standards directory
+├── .github/
+│   └── workflows/               # Reusable GitHub Actions workflows (workflow_call)
+│       ├── reusable-maven-ci.yml
+│       ├── reusable-flutter-ci.yml
+│       └── reusable-angular-ci.yml
+├── templates/
+│   └── github-actions/          # Standalone CI workflow templates for downstream projects
+│       ├── ci-maven.yml
+│       ├── ci-flutter.yml
+│       └── ci-angular.yml
 ├── scripts/
 │   ├── scan-structure.py        # Python scanner for Java/Kotlin, Flutter, and Angular projects
-│   └── ensure-structure.sh      # Shell wrapper for Antigravity PreInvocation hook
+│   ├── ensure-structure.sh      # Shell wrapper for Antigravity PreInvocation hook
+│   └── coverage/                # Automated coverage summary parsers (Markdown & PR comment)
+│       ├── generate-jacoco-summary.py
+│       └── generate-lcov-summary.py
 └── rules/                       # Stack-specific engineering guidelines
     ├── shared/                  # Universal standards (Git, CI, Project Structure)
     │   ├── git-and-ci-standards.md

@@ -1,0 +1,78 @@
+name: Reusable Flutter CI
+
+on:
+  workflow_call:
+    inputs:
+      flutter-version:
+        description: 'Flutter channel or version'
+        required: false
+        default: 'stable'
+        type: string
+
+jobs:
+  analyze-and-test:
+    name: Flutter Analyze & Test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: ${{ inputs.flutter-version }}
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Verify code formatting
+        run: dart format --output=none --set-exit-if-changed .
+
+      - name: Run static analysis
+        run: flutter analyze --fatal-infos --fatal-warnings
+
+      - name: Run unit & widget tests with coverage
+        run: flutter test --coverage
+
+      - name: Generate Coverage Summary
+        if: always()
+        run: |
+          mkdir -p target
+          if [ -f .agents/scripts/coverage/generate-lcov-summary.py ]; then
+            python3 .agents/scripts/coverage/generate-lcov-summary.py coverage/lcov.info target/coverage-summary.md --title "Flutter Code Coverage Summary"
+          elif [ -f .github/scripts/generate-lcov-summary.py ]; then
+            python3 .github/scripts/generate-lcov-summary.py coverage/lcov.info target/coverage-summary.md --title "Flutter Code Coverage Summary"
+          else
+            echo "Coverage generator script not found."
+          fi
+
+      - name: Comment PR Coverage Summary
+        if: github.event_name == 'pull_request' && !cancelled()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          if [ -f target/coverage-summary.md ]; then
+            COMMENT_ID=$(gh api repos/${{ github.repository }}/issues/${PR_NUMBER}/comments --jq '.[] | select(.body | contains("Flutter Code Coverage Summary")) | .id' | head -n 1)
+            if [ -n "$COMMENT_ID" ]; then
+              gh api --method PATCH repos/${{ github.repository }}/issues/comments/${COMMENT_ID} -F body=@target/coverage-summary.md
+            else
+              gh pr comment ${PR_NUMBER} --body-file target/coverage-summary.md
+            fi
+          fi
+
+      - name: Upload Coverage Report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: flutter-lcov-report
+          path: coverage/
+          if-no-files-found: ignore
