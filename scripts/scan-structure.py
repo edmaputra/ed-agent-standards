@@ -13,8 +13,9 @@ import argparse
 import datetime
 import json
 import os
+import sys
 from pathlib import Path
-from typing import Any, Dict, List, Set
+from typing import Any, Dict, List, Optional, Set
 
 IGNORED_DIRS: Set[str] = {
     ".git",
@@ -26,6 +27,16 @@ IGNORED_DIRS: Set[str] = {
     ".dart_tool",
     ".gemini",
     ".system_generated",
+    ".turbo",
+    ".next",
+    ".nuxt",
+    ".cache",
+    ".venv",
+    "venv",
+    "env",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".pytest_cache",
     "node_modules",
     "build",
     "target",
@@ -34,7 +45,6 @@ IGNORED_DIRS: Set[str] = {
     "bin",
     "obj",
     "coverage",
-    ".pytest_cache",
     "__pycache__",
 }
 
@@ -50,11 +60,11 @@ IGNORED_EXTENSIONS: Set[str] = {
 }
 
 
-def should_ignore_dir(dir_name: str, parent_path: Path = None) -> bool:
+def should_ignore_dir(dir_name: str, parent_path: Optional[Path] = None) -> bool:
     if dir_name in IGNORED_DIRS:
         if dir_name == "out" and parent_path is not None:
-            parts = parent_path.parts
-            if "src" in parts or "adapter" in parts or "lib" in parts:
+            lower_parts = [p.lower() for p in parent_path.parts]
+            if any(p in lower_parts for p in ["src", "adapter", "adapters", "lib", "port", "ports"]):
                 return False
         return True
     return dir_name.startswith(".") and dir_name not in {".agents"}
@@ -67,33 +77,57 @@ def should_ignore_file(file_name: str) -> bool:
 
 def detect_stacks(workspace: Path) -> List[str]:
     stacks = []
-    has_java_or_kotlin = (
-        (workspace / "pom.xml").exists()
-        or (workspace / "build.gradle").exists()
-        or (workspace / "build.gradle.kts").exists()
-        or (workspace / "settings.gradle").exists()
-        or (workspace / "settings.gradle.kts").exists()
-        or any((workspace / p).exists() for p in ["src/main/java", "src/main/kotlin"])
-    )
-    if has_java_or_kotlin:
-        stacks.append("java-kotlin")
 
-    has_flutter = (workspace / "pubspec.yaml").exists()
-    if has_flutter:
-        stacks.append("flutter")
+    def check_java_kotlin(p: Path) -> bool:
+        return (
+            (p / "pom.xml").exists()
+            or (p / "build.gradle").exists()
+            or (p / "build.gradle.kts").exists()
+            or (p / "settings.gradle").exists()
+            or (p / "settings.gradle.kts").exists()
+            or (p / "src" / "main" / "java").exists()
+            or (p / "src" / "main" / "kotlin").exists()
+        )
 
-    has_angular = (
-        (workspace / "angular.json").exists()
-        or (workspace / "src" / "app").exists()
-    )
-    if not has_angular and (workspace / "package.json").exists():
+    def check_flutter(p: Path) -> bool:
+        return (p / "pubspec.yaml").exists()
+
+    def check_angular(p: Path) -> bool:
+        if (p / "angular.json").exists() or (p / "src" / "app").exists():
+            return True
+        pkg_json = p / "package.json"
+        if pkg_json.exists():
+            try:
+                with open(pkg_json, "r", encoding="utf-8") as f:
+                    content = f.read()
+                    if "@angular/core" in content:
+                        return True
+            except Exception:
+                pass
+        return False
+
+    has_java_or_kotlin = check_java_kotlin(workspace)
+    has_flutter = check_flutter(workspace)
+    has_angular = check_angular(workspace)
+
+    # Check 1-2 level subdirectories for monorepo layouts
+    if not (has_java_or_kotlin and has_flutter and has_angular):
         try:
-            with open(workspace / "package.json", "r", encoding="utf-8") as f:
-                content = f.read()
-                if "@angular/core" in content:
-                    has_angular = True
+            for item in workspace.iterdir():
+                if item.is_dir() and not should_ignore_dir(item.name, workspace):
+                    if not has_java_or_kotlin and check_java_kotlin(item):
+                        has_java_or_kotlin = True
+                    if not has_flutter and check_flutter(item):
+                        has_flutter = True
+                    if not has_angular and check_angular(item):
+                        has_angular = True
         except Exception:
             pass
+
+    if has_java_or_kotlin:
+        stacks.append("java-kotlin")
+    if has_flutter:
+        stacks.append("flutter")
     if has_angular:
         stacks.append("angular")
 
@@ -133,8 +167,10 @@ def scan_java_kotlin_hexagonal(workspace: Path) -> Dict[str, Any]:
             "adapter": {"inbound": {}, "outbound": {}},
             "config": [],
         }
+        entry_points: List[str] = []
 
-        for root, dirs, files in os.walk(src_root / "src" / "main" if (src_root / "src" / "main").exists() else src_root):
+        scan_dir = src_root / "src" / "main" if (src_root / "src" / "main").exists() else src_root
+        for root, dirs, files in os.walk(scan_dir):
             dirs[:] = [d for d in dirs if not should_ignore_dir(d, Path(root))]
             for file in sorted(files):
                 if should_ignore_file(file):
@@ -144,43 +180,88 @@ def scan_java_kotlin_hexagonal(workspace: Path) -> Dict[str, Any]:
 
                 full_path = Path(root) / file
                 rel_file = str(full_path.relative_to(workspace))
-                parts = full_path.parts
+                lower_parts = [p.lower() for p in full_path.parts]
+                lower_file = file.lower()
 
-                if "domain" in parts:
-                    if "model" in parts or "entity" in parts:
+                if "domain" in lower_parts:
+                    if any(p in lower_parts for p in ["model", "models", "entity", "entities", "vo"]) or any(
+                        lower_file.endswith(s) for s in ["entity.java", "entity.kt", "vo.java", "vo.kt", "record.java", "record.kt"]
+                    ):
                         mod_layers["domain"]["models"].append(rel_file)
-                    elif "port" in parts or "spi" in parts:
+                    elif any(p in lower_parts for p in ["port", "ports", "spi", "spis", "repository", "repositories"]) or any(
+                        lower_file.endswith(s) for s in ["repository.java", "repository.kt", "port.java", "port.kt", "spi.java", "spi.kt"]
+                    ):
                         mod_layers["domain"]["ports"].append(rel_file)
-                    elif "event" in parts:
+                    elif any(p in lower_parts for p in ["event", "events"]) or any(
+                        lower_file.endswith(s) for s in ["event.java", "event.kt"]
+                    ):
                         mod_layers["domain"]["events"].append(rel_file)
-                    elif "exception" in parts:
+                    elif any(p in lower_parts for p in ["exception", "exceptions", "error", "errors"]) or any(
+                        lower_file.endswith(s) for s in ["exception.java", "exception.kt"]
+                    ):
                         mod_layers["domain"]["exceptions"].append(rel_file)
                     else:
                         mod_layers["domain"].setdefault("other", []).append(rel_file)
-                elif "application" in parts:
-                    if "usecase" in parts:
+
+                elif "application" in lower_parts:
+                    if any(p in lower_parts for p in ["usecase", "usecases", "command", "commands", "query", "queries"]) or any(
+                        lower_file.endswith(s) for s in ["usecase.java", "usecase.kt", "command.java", "command.kt", "query.java", "query.kt"]
+                    ):
                         mod_layers["application"]["usecases"].append(rel_file)
-                    elif "service" in parts:
+                    elif any(p in lower_parts for p in ["service", "services"]) or any(
+                        lower_file.endswith(s) for s in ["service.java", "service.kt"]
+                    ):
                         mod_layers["application"]["services"].append(rel_file)
-                    elif "port" in parts:
+                    elif any(p in lower_parts for p in ["port", "ports", "spi", "spis"]) or any(
+                        lower_file.endswith(s) for s in ["port.java", "port.kt", "spi.java", "spi.kt"]
+                    ):
                         mod_layers["application"]["ports"].append(rel_file)
                     else:
                         mod_layers["application"].setdefault("other", []).append(rel_file)
-                elif "adapter" in parts:
-                    # check in vs out
-                    if "in" in parts:
-                        # find sub-adapter (e.g. rest, web, kafka)
-                        idx = parts.index("in")
-                        sub = parts[idx + 1] if idx + 1 < len(parts) - 1 else "general"
+
+                elif "adapter" in lower_parts or "adapters" in lower_parts:
+                    # Determine whether inbound or outbound
+                    in_keywords = {"in", "inbound", "driving"}
+                    out_keywords = {"out", "outbound", "driven"}
+
+                    found_in = next((p for p in in_keywords if p in lower_parts), None)
+                    found_out = next((p for p in out_keywords if p in lower_parts), None)
+
+                    if found_in:
+                        idx = lower_parts.index(found_in)
+                        sub = full_path.parts[idx + 1] if idx + 1 < len(full_path.parts) - 1 else "general"
                         mod_layers["adapter"]["inbound"].setdefault(sub, []).append(rel_file)
-                    elif "out" in parts:
-                        idx = parts.index("out")
-                        sub = parts[idx + 1] if idx + 1 < len(parts) - 1 else "general"
+                    elif found_out:
+                        idx = lower_parts.index(found_out)
+                        sub = full_path.parts[idx + 1] if idx + 1 < len(full_path.parts) - 1 else "general"
                         mod_layers["adapter"]["outbound"].setdefault(sub, []).append(rel_file)
                     else:
-                        mod_layers["adapter"].setdefault("other", []).append(rel_file)
-                elif "config" in parts or "infrastructure" in parts:
+                        # Direct sub-adapter check (e.g. adapter.rest, adapter.persistence)
+                        adapter_kw = "adapter" if "adapter" in lower_parts else "adapters"
+                        idx = lower_parts.index(adapter_kw)
+                        sub = full_path.parts[idx + 1] if idx + 1 < len(full_path.parts) - 1 else "general"
+                        sub_lower = sub.lower()
+
+                        inbound_subs = {"rest", "web", "controller", "controllers", "messaging", "kafka", "amqp", "rabbitmq", "graphql", "grpc"}
+                        outbound_subs = {"persistence", "jpa", "database", "r2dbc", "client", "clients", "http", "feign", "webclient", "redis"}
+
+                        if sub_lower in inbound_subs:
+                            mod_layers["adapter"]["inbound"].setdefault(sub, []).append(rel_file)
+                        elif sub_lower in outbound_subs:
+                            mod_layers["adapter"]["outbound"].setdefault(sub, []).append(rel_file)
+                        else:
+                            mod_layers["adapter"].setdefault("other", []).append(rel_file)
+
+                elif any(p in lower_parts for p in ["config", "configuration", "infrastructure", "autoconfiguration", "autoconfigure"]):
                     mod_layers["config"].append(rel_file)
+
+                elif lower_file.endswith("application.java") or lower_file.endswith("application.kt"):
+                    entry_points.append(rel_file)
+                else:
+                    mod_layers.setdefault("other", []).append(rel_file)
+
+        if entry_points:
+            mod_layers["entryPoints"] = entry_points
 
         hex_data["modules"][module_name] = mod_layers
 
@@ -189,6 +270,14 @@ def scan_java_kotlin_hexagonal(workspace: Path) -> Dict[str, Any]:
 
 def scan_flutter_features(workspace: Path) -> Dict[str, Any]:
     lib_path = workspace / "lib"
+    if not lib_path.exists():
+        # Check subdirectories (e.g. monorepo mobile/lib or app/lib)
+        for sub in sorted(workspace.iterdir()):
+            if sub.is_dir() and not should_ignore_dir(sub.name, workspace):
+                if (sub / "pubspec.yaml").exists() and (sub / "lib").exists():
+                    lib_path = sub / "lib"
+                    break
+
     if not lib_path.exists():
         return {"architecture": "flutter", "status": "lib directory not found"}
 
@@ -201,37 +290,62 @@ def scan_flutter_features(workspace: Path) -> Dict[str, Any]:
 
     # Entry points
     if (lib_path / "main.dart").exists():
-        flutter_data["entryPoints"].append("lib/main.dart")
+        flutter_data["entryPoints"].append(str((lib_path / "main.dart").relative_to(workspace)))
 
     # Core directory
     core_path = lib_path / "core"
     if core_path.exists():
         for item in sorted(core_path.iterdir()):
-            if item.is_dir() and not should_ignore_dir(item.name):
-                flutter_data["core"][item.name] = [
-                    str(p.relative_to(workspace))
-                    for p in sorted(item.rglob("*.dart"))
-                    if not should_ignore_file(p.name)
-                ]
+            if should_ignore_dir(item.name, core_path) or should_ignore_file(item.name):
+                continue
+            if item.is_dir():
+                dart_files = []
+                for root, dirs, files in os.walk(item):
+                    dirs[:] = [d for d in dirs if not should_ignore_dir(d, Path(root))]
+                    for f in sorted(files):
+                        if f.endswith(".dart") and not should_ignore_file(f):
+                            dart_files.append(str((Path(root) / f).relative_to(workspace)))
+                if dart_files:
+                    flutter_data["core"][item.name] = dart_files
+            elif item.is_file() and item.name.endswith(".dart"):
+                flutter_data["core"].setdefault("general", []).append(str(item.relative_to(workspace)))
 
     # Features directory
     features_path = lib_path / "features"
     if features_path.exists():
         for feat in sorted(features_path.iterdir()):
-            if feat.is_dir() and not should_ignore_dir(feat.name):
+            if feat.is_dir() and not should_ignore_dir(feat.name, features_path):
                 feat_dict: Dict[str, Any] = {
                     "presentation": [],
                     "domain": [],
                     "data": [],
                 }
+                captured: Set[str] = set()
                 for layer in ["presentation", "domain", "data"]:
                     layer_dir = feat / layer
                     if layer_dir.exists():
-                        feat_dict[layer] = [
-                            str(p.relative_to(workspace))
-                            for p in sorted(layer_dir.rglob("*.dart"))
-                            if not should_ignore_file(p.name)
-                        ]
+                        layer_files = []
+                        for root, dirs, files in os.walk(layer_dir):
+                            dirs[:] = [d for d in dirs if not should_ignore_dir(d, Path(root))]
+                            for f in sorted(files):
+                                if f.endswith(".dart") and not should_ignore_file(f):
+                                    rel = str((Path(root) / f).relative_to(workspace))
+                                    layer_files.append(rel)
+                                    captured.add(rel)
+                        feat_dict[layer] = layer_files
+
+                # Check for other dart files inside the feature
+                other_files = []
+                for root, dirs, files in os.walk(feat):
+                    dirs[:] = [d for d in dirs if not should_ignore_dir(d, Path(root))]
+                    for f in sorted(files):
+                        if f.endswith(".dart") and not should_ignore_file(f):
+                            rel = str((Path(root) / f).relative_to(workspace))
+                            if rel not in captured:
+                                other_files.append(rel)
+                if other_files:
+                    feat_dict["other"] = other_files
+
                 flutter_data["features"][feat.name] = feat_dict
 
     return flutter_data
@@ -240,47 +354,75 @@ def scan_flutter_features(workspace: Path) -> Dict[str, Any]:
 def scan_angular_features(workspace: Path) -> Dict[str, Any]:
     app_path = workspace / "src" / "app"
     if not app_path.exists():
-        # check alternative app dir
-        alt = list(workspace.glob("**/src/app"))
-        if alt:
-            app_path = alt[0]
+        # Search safely skipping ignored directories
+        found_app = None
+        for root, dirs, _ in os.walk(workspace):
+            dirs[:] = [d for d in dirs if not should_ignore_dir(d, Path(root))]
+            p = Path(root)
+            if (p / "src" / "app").exists():
+                found_app = p / "src" / "app"
+                break
+        if found_app:
+            app_path = found_app
         else:
             return {"architecture": "angular", "status": "src/app directory not found"}
 
     angular_data: Dict[str, Any] = {
         "architecture": "feature-first-standalone",
+        "entryPoints": [],
         "core": {},
         "shared": {},
         "features": {},
     }
 
+    # Entry points
+    src_path = app_path.parent
+    for entry in ["main.ts", "index.html"]:
+        entry_file = src_path / entry
+        if entry_file.exists():
+            angular_data["entryPoints"].append(str(entry_file.relative_to(workspace)))
+
     # Core
     core_path = app_path / "core"
     if core_path.exists():
         for item in sorted(core_path.iterdir()):
-            if item.is_dir() and not should_ignore_dir(item.name):
-                angular_data["core"][item.name] = [
-                    str(p.relative_to(workspace))
-                    for p in sorted(item.rglob("*.ts"))
-                    if not should_ignore_file(p.name)
-                ]
+            if should_ignore_dir(item.name, core_path) or should_ignore_file(item.name):
+                continue
+            if item.is_dir():
+                ts_files = []
+                for root, dirs, files in os.walk(item):
+                    dirs[:] = [d for d in dirs if not should_ignore_dir(d, Path(root))]
+                    for f in sorted(files):
+                        if f.endswith(".ts") and not should_ignore_file(f):
+                            ts_files.append(str((Path(root) / f).relative_to(workspace)))
+                if ts_files:
+                    angular_data["core"][item.name] = ts_files
+            elif item.is_file() and item.name.endswith(".ts"):
+                angular_data["core"].setdefault("general", []).append(str(item.relative_to(workspace)))
 
     # Shared
     shared_path = app_path / "shared"
     if shared_path.exists():
         for item in sorted(shared_path.iterdir()):
-            if item.is_dir() and not should_ignore_dir(item.name):
-                angular_data["shared"][item.name] = [
-                    str(p.relative_to(workspace))
-                    for p in sorted(item.rglob("*.ts"))
-                    if not should_ignore_file(p.name)
-                ]
+            if should_ignore_dir(item.name, shared_path) or should_ignore_file(item.name):
+                continue
+            if item.is_dir():
+                ts_files = []
+                for root, dirs, files in os.walk(item):
+                    dirs[:] = [d for d in dirs if not should_ignore_dir(d, Path(root))]
+                    for f in sorted(files):
+                        if f.endswith(".ts") and not should_ignore_file(f):
+                            ts_files.append(str((Path(root) / f).relative_to(workspace)))
+                if ts_files:
+                    angular_data["shared"][item.name] = ts_files
+            elif item.is_file() and item.name.endswith(".ts"):
+                angular_data["shared"].setdefault("general", []).append(str(item.relative_to(workspace)))
 
     # Features
     features_path = app_path / "features"
     if features_path.exists():
         for feat in sorted(features_path.iterdir()):
-            if feat.is_dir() and not should_ignore_dir(feat.name):
+            if feat.is_dir() and not should_ignore_dir(feat.name, features_path):
                 feat_dict: Dict[str, Any] = {
                     "components": [],
                     "services": [],
@@ -288,21 +430,34 @@ def scan_angular_features(workspace: Path) -> Dict[str, Any]:
                     "models": [],
                     "routes": [],
                 }
-                for p in sorted(feat.rglob("*.*")):
-                    if p.is_dir() or should_ignore_file(p.name):
-                        continue
-                    rel = str(p.relative_to(workspace))
-                    name = p.name
-                    if name.endswith(".component.ts") or name.endswith(".component.html"):
-                        feat_dict["components"].append(rel)
-                    elif name.endswith(".service.ts"):
-                        feat_dict["services"].append(rel)
-                    elif name.endswith(".state.ts") or name.endswith(".actions.ts") or name.endswith(".reducer.ts") or name.endswith(".selectors.ts") or name.endswith(".effects.ts") or "store" in p.parts:
-                        feat_dict["store"].append(rel)
-                    elif name.endswith(".model.ts") or name.endswith(".types.ts") or "models" in p.parts:
-                        feat_dict["models"].append(rel)
-                    elif name.endswith(".routes.ts") or name.endswith("-routing.module.ts"):
-                        feat_dict["routes"].append(rel)
+                other_files = []
+
+                for root, dirs, files in os.walk(feat):
+                    dirs[:] = [d for d in dirs if not should_ignore_dir(d, Path(root))]
+                    for file in sorted(files):
+                        if should_ignore_file(file):
+                            continue
+                        p = Path(root) / file
+                        rel = str(p.relative_to(workspace))
+                        name = p.name
+                        lower_name = name.lower()
+                        lower_parts = [part.lower() for part in p.parts]
+
+                        if any(lower_name.endswith(ext) for ext in [".component.ts", ".component.html", ".component.scss", ".component.css"]):
+                            feat_dict["components"].append(rel)
+                        elif lower_name.endswith(".service.ts"):
+                            feat_dict["services"].append(rel)
+                        elif any(lower_name.endswith(ext) for ext in [".state.ts", ".actions.ts", ".reducer.ts", ".selectors.ts", ".effects.ts"]) or "store" in lower_parts:
+                            feat_dict["store"].append(rel)
+                        elif any(lower_name.endswith(ext) for ext in [".model.ts", ".types.ts"]) or "models" in lower_parts:
+                            feat_dict["models"].append(rel)
+                        elif lower_name.endswith(".routes.ts") or lower_name.endswith("-routing.module.ts"):
+                            feat_dict["routes"].append(rel)
+                        else:
+                            other_files.append(rel)
+
+                if other_files:
+                    feat_dict["other"] = other_files
 
                 angular_data["features"][feat.name] = feat_dict
 
@@ -314,33 +469,52 @@ def scan_standards_repo(workspace: Path) -> Dict[str, Any]:
     if not rules_dir.exists():
         return {}
 
-    rules_by_stack: Dict[str, List[Dict[str, str]]] = {}
+    rules_by_stack: Dict[str, List[Dict[str, Any]]] = {}
     for stack_dir in sorted(rules_dir.iterdir()):
-        if stack_dir.is_dir() and not should_ignore_dir(stack_dir.name):
+        if stack_dir.is_dir() and not should_ignore_dir(stack_dir.name, rules_dir):
             stack_rules = []
             for rule_file in sorted(stack_dir.glob("*.md")):
-                # Read description from frontmatter if available
+                # Read description and globs from frontmatter if available
                 desc = ""
+                globs: List[str] = []
                 try:
                     with open(rule_file, "r", encoding="utf-8") as f:
                         lines = f.readlines()
-                        in_fm = False
-                        for line in lines:
-                            if line.strip() == "---":
-                                if in_fm:
-                                    break
-                                in_fm = True
-                                continue
-                            if in_fm and line.startswith("description:"):
+                    in_fm = False
+                    in_globs = False
+                    for line in lines:
+                        stripped = line.strip()
+                        if stripped == "---":
+                            if in_fm:
+                                break
+                            in_fm = True
+                            continue
+                        if in_fm:
+                            if stripped.startswith("description:"):
+                                in_globs = False
                                 desc = line.split("description:", 1)[1].strip().strip('"\'')
+                            elif stripped.startswith("globs:"):
+                                in_globs = True
+                            elif in_globs:
+                                if stripped.startswith("-"):
+                                    glob_val = stripped.lstrip("-").strip().strip('"\'')
+                                    if glob_val:
+                                        globs.append(glob_val)
+                                elif stripped and not stripped.startswith("#"):
+                                    in_globs = False
                 except Exception:
                     pass
 
-                stack_rules.append({
+                rule_entry: Dict[str, Any] = {
                     "file": str(rule_file.relative_to(workspace)),
                     "name": rule_file.stem,
                     "description": desc,
-                })
+                }
+                if globs:
+                    rule_entry["globs"] = globs
+
+                stack_rules.append(rule_entry)
+
             rules_by_stack[stack_dir.name] = stack_rules
 
     return {
@@ -378,7 +552,7 @@ def scan_workspace(workspace_path: str) -> Dict[str, Any]:
     top_level_files = []
     top_level_dirs = []
     for item in sorted(workspace.iterdir()):
-        if should_ignore_dir(item.name) or should_ignore_file(item.name):
+        if should_ignore_dir(item.name, workspace) or should_ignore_file(item.name):
             continue
         if item.is_dir():
             top_level_dirs.append(item.name)
@@ -404,8 +578,8 @@ def main():
     workspace = Path(args.workspace).resolve()
 
     if not workspace.exists() or not workspace.is_dir():
-        print(f"Error: Workspace path '{workspace}' does not exist or is not a directory.", file=os.sys.stderr)
-        os.sys.exit(1)
+        print(f"Error: Workspace path '{workspace}' does not exist or is not a directory.", file=sys.stderr)
+        sys.exit(1)
 
     result = scan_workspace(str(workspace))
     json_str = json.dumps(result, indent=2)
@@ -427,7 +601,7 @@ def main():
 
     if out_path.exists() and not args.force:
         # File already exists, skip unless force
-        print(f"[scan-structure] Notice: {out_path} already exists. Use --force to overwrite.", file=os.sys.stderr)
+        print(f"[scan-structure] Notice: {out_path} already exists. Use --force to overwrite.", file=sys.stderr)
         return
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -435,7 +609,7 @@ def main():
         f.write(json_str)
         f.write("\n")
 
-    print(f"[scan-structure] Generated project map at {out_path}", file=os.sys.stderr)
+    print(f"[scan-structure] Generated project map at {out_path}", file=sys.stderr)
 
 
 if __name__ == "__main__":
