@@ -295,7 +295,7 @@ export class userProfile { ... }             // ❌ camelCase class name
 - 🔴 **MUST**: Write **unit tests** for all services, pipes, guards, and NgRx effects using **Jest**.
 - 🟡 **SHOULD**: Write **component tests** using **Angular Testing Library** (`@testing-library/angular`) for behaviour-driven UI testing. Avoid testing implementation details (internal component properties/methods).
 - 🟢 **MAY**: Write **E2E tests** using **Playwright** for critical user journeys.
-- 🔴 **MUST**: Maintain a minimum of **80% line coverage** on services and store logic. Enforce via CI.
+- 🔴 **MUST**: Maintain a minimum of **80% line coverage** on services and store logic. Enforce via CI (`npm test -- --coverage`) using the shared parser `python3 .agents/scripts/coverage/generate-lcov-summary.py` and template `templates/github-actions/ci-angular.yml`.
 - 🔴 **MUST**: Mock all external dependencies (HTTP, services, NgRx store) in unit and component tests.
 
 ```typescript

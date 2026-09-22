@@ -1,0 +1,93 @@
+name: CI (Angular)
+
+on:
+  push:
+    branches:
+      - main
+      - 'test/**'
+      - 'feat/**'
+      - 'release/**'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-test-and-build:
+    name: Angular Lint, Test & Build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint source code
+        run: npm run lint --if-present
+
+      - name: Run unit tests with coverage
+        run: npm test -- --coverage --watch=false --ci --browsers=ChromeHeadlessCustom
+
+      - name: Build production bundle
+        run: npm run build -- --configuration production
+
+      - name: Generate Coverage Summary
+        if: always()
+        run: |
+          mkdir -p target
+          if [ -f .agents/scripts/coverage/generate-lcov-summary.py ]; then
+            python3 .agents/scripts/coverage/generate-lcov-summary.py coverage/lcov.info target/coverage-summary.md --title "Angular Code Coverage Summary"
+          elif [ -f .github/scripts/generate-lcov-summary.py ]; then
+            python3 .github/scripts/generate-lcov-summary.py coverage/lcov.info target/coverage-summary.md --title "Angular Code Coverage Summary"
+          else
+            echo "Coverage generator script not found."
+          fi
+
+      - name: Comment PR Coverage Summary
+        if: github.event_name == 'pull_request' && !cancelled()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          if [ -f target/coverage-summary.md ]; then
+            COMMENT_ID=$(gh api repos/${{ github.repository }}/issues/${PR_NUMBER}/comments --jq '.[] | select(.body | contains("Angular Code Coverage Summary")) | .id' | head -n 1)
+            if [ -n "$COMMENT_ID" ]; then
+              gh api --method PATCH repos/${{ github.repository }}/issues/comments/${COMMENT_ID} -F body=@target/coverage-summary.md
+            else
+              gh pr comment ${PR_NUMBER} --body-file target/coverage-summary.md
+            fi
+          fi
+
+      - name: Upload Coverage Report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: angular-coverage-report
+          path: coverage/
+          if-no-files-found: ignore
+
+      - name: Upload Production Build Artifact
+        if: success()
+        uses: actions/upload-artifact@v7
+        with:
+          name: angular-dist
+          path: dist/
+          if-no-files-found: ignore

@@ -136,7 +136,55 @@ python3 .agents/scripts/scan-structure.py --stdout
 
 ---
 
-## 4. Adding a New Stack
+## 4. Reusable CI/CD Workflows & Coverage Automation
+
+This repository provides centralized CI/CD automation across **Java / Kotlin**, **Flutter**, and **Angular** projects, standardizing build concurrency, test gates, coverage reporting, and PR feedback without code duplication.
+
+### Key Components
+
+| Component | Location | Description |
+|---|---|---|
+| **JaCoCo Parser** | [`scripts/coverage/generate-jacoco-summary.py`](scripts/coverage/generate-jacoco-summary.py) | Parses multi-module JaCoCo CSV reports into Markdown tables with instruction/line/branch coverage and top missed classes. |
+| **LCOV Parser** | [`scripts/coverage/generate-lcov-summary.py`](scripts/coverage/generate-lcov-summary.py) | Universal LCOV parser for both Flutter (`flutter test --coverage`) and Angular (`npm test -- --coverage`). |
+| **Maven CI** | [`templates/github-actions/ci-maven.yml`](templates/github-actions/ci-maven.yml) / [`.github/workflows/reusable-maven-ci.yml`](.github/workflows/reusable-maven-ci.yml) | Java 25 matrix build, Maven wrapper verification, JaCoCo summary, sticky PR comment, and artifact archiving. |
+| **Flutter CI** | [`templates/github-actions/ci-flutter.yml`](templates/github-actions/ci-flutter.yml) / [`.github/workflows/reusable-flutter-ci.yml`](.github/workflows/reusable-flutter-ci.yml) | Flutter stable channel, format check, strict static analysis, unit/widget tests with LCOV summary. |
+| **Angular CI** | [`templates/github-actions/ci-angular.yml`](templates/github-actions/ci-angular.yml) / [`.github/workflows/reusable-angular-ci.yml`](.github/workflows/reusable-angular-ci.yml) | Node.js LTS, ESLint, unit tests with LCOV summary, and production asset bundle verification. |
+
+### Downstream Usage Options
+
+#### Option 1: Calling Reusable Workflows (`workflow_call`)
+In your project's `.github/workflows/ci.yml`:
+```yaml
+name: CI
+
+on:
+  push:
+    branches: [main, 'test/**', 'feat/**', 'release/**']
+  pull_request:
+    branches: [main]
+
+jobs:
+  ci:
+    uses: edmaputra/ed-agent-standards/.github/workflows/reusable-maven-ci.yml@main
+    permissions:
+      contents: read
+      pull-requests: write
+```
+
+#### Option 2: Using Standalone Templates with `.agents` Submodule
+Copy the template from `templates/github-actions/` into your project's `.github/workflows/ci.yml`. Because `.agents` is mapped as a submodule, the workflow calls the shared script directly:
+```yaml
+- name: Generate JaCoCo Coverage Summary
+  if: always()
+  run: python3 .agents/scripts/coverage/generate-jacoco-summary.py --output target/coverage-summary.md
+```
+
+### Sticky PR Comments
+Coverage summary tables are posted to Pull Requests idempotently using `gh api PATCH` to update existing comments rather than generating notification spam on every push.
+
+---
+
+## 5. Adding a New Stack
 
 1. Create a new subdirectory under `rules/` named after the stack (e.g. `rules/react/`).
 2. Add a `*-standards.md` file inside it with YAML frontmatter (`description`, `globs`) targeting the relevant file extensions.
@@ -145,7 +193,7 @@ python3 .agents/scripts/scan-structure.py --stdout
 
 ---
 
-## 5. Contributing & Updating Rules
+## 6. Contributing & Updating Rules
 
 1. Update or add rule documents inside the appropriate `rules/<stack>/` subdirectory.
 2. Ensure markdown documents are structured clearly with good/bad examples and clear rationale.
