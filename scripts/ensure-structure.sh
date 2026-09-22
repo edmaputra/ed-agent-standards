@@ -9,16 +9,24 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKSPACE_ROOT="."
 
+# Find Python interpreter
+PYTHON_BIN=""
+if command -v python3 >/dev/null 2>&1; then
+    PYTHON_BIN="python3"
+elif command -v python >/dev/null 2>&1; then
+    PYTHON_BIN="python"
+fi
+
 # Read stdin JSON payload from Antigravity lifecycle hook
 STDIN_INPUT=$(cat || true)
 
-if [ -n "$STDIN_INPUT" ]; then
-    PARSED_ROOT=$(python3 -c "
+if [ -n "$STDIN_INPUT" ] && [ -n "$PYTHON_BIN" ]; then
+    PARSED_ROOT=$(printf '%s' "$STDIN_INPUT" | "$PYTHON_BIN" -c "
 import sys, json
 try:
-    data = json.loads('''$STDIN_INPUT''')
+    data = json.load(sys.stdin)
     paths = data.get('workspacePaths', [])
-    if paths:
+    if paths and isinstance(paths, list) and paths[0]:
         print(paths[0])
     else:
         print('.')
@@ -30,23 +38,32 @@ except Exception:
     fi
 fi
 
-# Determine potential structure file locations
+# Determine structure file location and check if it already exists
 TARGET_JSON=""
-if [ -d "$WORKSPACE_ROOT/.agents" ]; then
+if [ -f "$WORKSPACE_ROOT/project-structure.json" ]; then
+    TARGET_JSON="$WORKSPACE_ROOT/project-structure.json"
+elif [ -f "$WORKSPACE_ROOT/.agents/project-structure.json" ]; then
+    TARGET_JSON="$WORKSPACE_ROOT/.agents/project-structure.json"
+elif [ -d "$WORKSPACE_ROOT/.agents" ]; then
     TARGET_JSON="$WORKSPACE_ROOT/.agents/project-structure.json"
 else
     TARGET_JSON="$WORKSPACE_ROOT/project-structure.json"
 fi
 
-# Check if structure file already exists
 if [ -f "$TARGET_JSON" ]; then
     # Already exists, output empty JSON to continue without delay
     echo "{}"
     exit 0
 fi
 
+if [ -z "$PYTHON_BIN" ]; then
+    # Python is not available
+    echo "{}"
+    exit 0
+fi
+
 # Run scanner to generate project structure
-python3 "$SCRIPT_DIR/scan-structure.py" "$WORKSPACE_ROOT" > /dev/null 2>&1 || true
+"$PYTHON_BIN" "$SCRIPT_DIR/scan-structure.py" "$WORKSPACE_ROOT" > /dev/null 2>&1 || true
 
 if [ -f "$TARGET_JSON" ]; then
     cat <<EOF
