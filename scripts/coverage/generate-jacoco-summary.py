@@ -68,6 +68,9 @@ def clean_group_name(raw_group: str, strip_prefix: Optional[str] = None) -> str:
         parts = [p for p in group.split("/") if p]
         if len(parts) > 1 and parts[0] in {"src", "target", "build"}:
             group = "/".join(parts[1:])
+        elif len(parts) == 2:
+            # JaCoCo multi-module aggregate formats GROUP as 'Aggregator Bundle Name/submodule'
+            group = parts[1]
     return group or "root"
 
 
