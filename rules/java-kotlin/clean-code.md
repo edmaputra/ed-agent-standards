@@ -170,6 +170,8 @@ public void validateNode(Node node) {
 
 ## 7. Testing Standards 🔴 MUST
 
+- **Code Coverage Gate & CI Enforcement**:
+  - 🔴 **MUST**: Maintain a minimum of **80% line coverage** on core business and domain logic (`domain`, `core` / use cases). Enforce via CI (`./mvnw clean verify` or `./gradlew check`) using the shared parser `python3 .agents/scripts/coverage/generate-jacoco-summary.py` and template `templates/github-actions/ci-maven.yml`.
 - **Integration-First Testing Tier (`*IT.java`)**:
   - Primary verification tier using `@SpringBootTest(webEnvironment = RANDOM_PORT)` with Testcontainers.
   - Use `org.springframework.test.web.reactive.server.WebTestClient` bound to the live embedded server (`WebTestClient.bindToServer().baseUrl("http://localhost:" + port)...`) for HTTP API testing, verifying actual network calls, servlet filters, security headers, and JSON responses. Do NOT use `MockMvc`.
